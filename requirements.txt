@@ -12,7 +12,7 @@ dulwich==0.22.8
 fastjsonschema==2.21.1
 filelock==3.18.0
 findpython==0.6.3
-Flask==3.0.3
+
 fpdf==1.7.2
 google-api-core==2.21.0
 google-auth==2.38.0
