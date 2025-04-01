@@ -1,3 +1,4 @@
+
 # ======================================================
 # Author: OSIAS
 # Project: VAG Module Scanner
@@ -6,30 +7,31 @@
 # Integrity Hash (SHA-256): 029d96e4d3968c7256c628bc2245a01c916f4bc33ce02207da7bd18b822b205d
 # ======================================================
 
+
+import os
 import binascii
 import json
 import logging
-import os
-import gspread
 import pandas as pd
 import streamlit as st
 from datetime import datetime
-from gspread_dataframe import set_with_dataframe, get_as_dataframe
-from oauth2client.service_account import ServiceAccountCredentials
-from openobd import *
 from pytz import timezone
+from gspread_dataframe import set_with_dataframe, get_as_dataframe
+from openobd import *
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logging.info("Author: yayra.osias@lkqbelgium.be")
 logging.info("VAG Information Retrieval")
 
-# Load Google Drive credentials
-google_credentials_str = os.getenv("GOOGLE_DRIVE_CREDENTIALS")
-if not google_credentials_str:
-    st.error("❌ Missing Google Drive Credentials!")
-    st.stop()
-GOOGLE_CREDENTIALS = json.loads(google_credentials_str)
+
+##########################################################################################
+
+# Load Google Drive credentials from Streamlit secrets
+GOOGLE_CREDENTIALS = st.secrets["GOOGLE_DRIVE_CREDENTIALS"]
+
 
 # Authenticate Google Drive
 def authenticate_google_drive():
@@ -58,7 +60,7 @@ def save_data_to_google_sheets(data, sheet_name, worksheet_name):
     try:
         if not data:
             return
-        local_tz = timezone("Europe/Brussels")  # Or your preferred timezone
+        local_tz = timezone("Europe/Brussels")
         timestamp = datetime.now(local_tz).strftime("%Y-%m-%d %H:%M:%S")
         for entry in data:
             entry["Timestamp"] = timestamp
@@ -108,43 +110,37 @@ def update_sheet3_if_needed(sheet_name, worksheet_name, comparison_data):
     else:
         st.info("✅ Sheet3 already contains all entries. No update needed.")
 
+################################################################################
+
+
+
 # Define modules
 all_modules = {
     "01_ECM": {"request_id": 0x07E0, "response_id": 0x07E8},
-    #"51_EV_ECM": {"request_id": 0x07EE, "response_id": 0x07E6},
     "C6_EV_OBC": {"request_id": 0x0744, "response_id": 0x07AE},
     "23_BKV": {"request_id": 0x073B, "response_id": 0x07A5},
+    
     "15_SRS_Airbag": {"request_id": 0x0715, "response_id": 0x077F},
-    #"A9_J869_Sound_modules": {"request_id": 0x071C, "response_id": 0x0786},
-    #"3C_Lane_Assist_J769": {"request_id": 0x074E, "response_id": 0x07B8},
-    #"42_Driver_door": {"request_id": 0x074A, "response_id": 0x07B4},
-    #"52_Passenger_door_module": {"request_id": 0x074B, "response_id": 0x07B5},
     "23_EBKV": {"request_id": 0x073B, "response_id": 0x07A5},
     "75_SOS-MODULE": {"request_id": 0x0767, "response_id": 0x07D1},
-    "16_Steering_wheel": {"request_id": 0x070C, "response_id": 0x0776},
     "44_EPS": {"request_id": 0x0712, "response_id": 0x077C},
-    #"5F_Information_Electronics": {"request_id": 0x07DD, "response_id": 0x0773},
-    "8C_BECM": {"request_id": 0x07ED, "response_id": 0x07E5},
+    #"8C_BECM": {"request_id": 0x07ED, "response_id": 0x07E5},
     "55_AFS_LIGHT": {"request_id": 0x0754, "response_id": 0x07BE},
     "02_TCM": {"request_id": 0x07E1, "response_id": 0x07E9},
     "17_IPC": {"request_id": 0x0714, "response_id": 0x077E},
     "19_GTW": {"request_id": 0x0710, "response_id": 0x077A},
     "09_BCM": {"request_id": 0x070E, "response_id": 0x0778},
-    #"03_ABS_ESP": {"request_id": 0x0713, "response_id": 0x077D},
     "15_SRS": {"request_id": 0x0715, "response_id": 0x077F},
     "13_ACC": {"request_id": 0x0757, "response_id": 0x07C1},
     "A5_FRONTSENSORS": {"request_id": 0x074F, "response_id": 0x07B9},
 }
 
-# App layout
 st.title("🚗 VAG Module Scanner")
 st.write("Scan VAG vehicle modules and log data to the cloud.")
 
-# Session ticket input
 ticket_id = st.text_input("Enter Remote Ticket ID", "", max_chars=20)
 
 if ticket_id and ticket_id.isdigit():
-
     scan_mode = st.radio("Select Scan Mode:", ["Full Scan", "Scan by Module"])
     selected_modules = {}
 
@@ -155,27 +151,25 @@ if ticket_id and ticket_id.isdigit():
         selected_modules = {k: all_modules[k] for k in selected_keys}
 
     if st.button("Run Scan"):
-        st.write("Starting OpenOBD Session...")
         try:
+            st.write("Starting OpenOBD Session...")
             openobd = OpenOBD()
             openobd_session = openobd.start_session_on_ticket(ticket_id)
             SessionTokenHandler(openobd_session)
 
-            def configure_can_bus():
-                bus_config = BusConfiguration(
-                    bus_name="VAG_bus",
-                    can_bus=CanBus(
-                        pin_plus=6,
-                        pin_min=14,
-                        can_protocol=CanProtocol.CAN_PROTOCOL_ISOTP,
-                        can_bit_rate=CanBitRate.CAN_BIT_RATE_500,
-                        transceiver=TransceiverSpeed.TRANSCEIVER_SPEED_HIGH,
-                    ),
-                )
-                StreamHandler(openobd_session.configure_bus).send_and_close([bus_config])
-                st.success("✅ CAN bus configured.")
+            bus_config = BusConfiguration(
+                bus_name="VAG_bus",
+                can_bus=CanBus(
+                    pin_plus=6,
+                    pin_min=14,
+                    can_protocol=CanProtocol.CAN_PROTOCOL_ISOTP,
+                    can_bit_rate=CanBitRate.CAN_BIT_RATE_500,
+                    transceiver=TransceiverSpeed.TRANSCEIVER_SPEED_HIGH,
+                ),
+            )
+            StreamHandler(openobd_session.configure_bus).send_and_close([bus_config])
+            st.success("✅ CAN bus configured.")
 
-            configure_can_bus()
             sheet3_db = load_sheet3_db("VAG_data", "Sheet3")
 
             def decode_utf8(response):
@@ -205,7 +199,6 @@ if ticket_id and ticket_id.isdigit():
                         padding=Padding.PADDING_ENABLED,
                     )
                     module_socket = IsotpSocket(openobd_session, channel)
-
                     module_socket.request("1003", tries=2, timeout=5)
 
                     module_entry = {"Module": module_name}
@@ -250,29 +243,44 @@ if ticket_id and ticket_id.isdigit():
         except Exception as e:
             st.error(f"❌ Failed to complete scan: {e}")
 
+
 # Graceful Exit with Session Check
+
 if st.button("Exit Application"):
     openobd = OpenOBD()
     session_list_object = openobd.get_session_list()
 
-    if len(session_list_object.sessions) == 0:
-        st.info("No OpenOBD sessions currently active. Exiting application.")
+    if not session_list_object.sessions:
+        st.success("✅ No active OpenOBD sessions. Application will now exit.")
         st.stop()
-    else:
-        st.warning("Active OpenOBD sessions detected:")
-        for number, session_info in enumerate(session_list_object.sessions, 1):
-            st.write(f"{number}. State: {session_info.state}, Created at: {session_info.created_at}")
 
-        session_ids = [f"{i + 1}. {session_info.id}" for i, session_info in enumerate(session_list_object.sessions)]
-        session_choice = st.selectbox("Select a session to close (or skip):", ["Cancel"] + session_ids)
+    #####################################################################
 
-        if session_choice != "Cancel":
+    # Display session details for selection
+    session_display = [
+        f"{i + 1}. ID: {s.id} | State: {s.state} | Created: {s.created_at}"
+        for i, s in enumerate(session_list_object.sessions)
+    ]
+
+    selected_display = st.multiselect(" Select session(s) to close:", options=session_display)
+
+    if selected_display:
+        for display in selected_display:
+            session_index = int(display.split(".")[0]) - 1
+            session_id = session_list_object.sessions[session_index].id
             try:
-                index = int(session_choice.split(".")[0]) - 1
-                selected_session = session_list_object.sessions[index]
-                openobd.interrupt_session(session_id=SessionId(value=selected_session.id))
-                st.success(f"Session {selected_session.id} has been closed.")
+                openobd.interrupt_session(session_id=SessionId(value=session_id))
+                st.success(f"✅ Session {session_id} successfully closed.")
             except Exception as e:
-                st.error(f"Error while closing session: {e}")
+                st.error(f"❌ Failed to close session {session_id}: {e}")
+
+        # After closing sessions, recheck if any are left
+        refreshed_list = openobd.get_session_list()
+        if not refreshed_list.sessions:
+            st.success(" All sessions closed. Exiting now.")
+            st.stop()
         else:
-            st.info("Exit cancelled. You can continue using the app.")
+            st.info("Some sessions are still active. You can close them or continue using the app.")
+
+    else:
+        st.info("No session selected. Exit cancelled.")
