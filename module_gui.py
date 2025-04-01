@@ -30,7 +30,7 @@ logging.info("VAG Information Retrieval")
 ##########################################################################################
 
 # Load Google Drive credentials from Streamlit secrets
-GOOGLE_CREDENTIALS = st.secrets["GOOGLE_DRIVE_CREDENTIALS"]
+GOOGLE_CREDENTIALS = json.loads(st.secrets["GOOGLE_DRIVE_CREDENTIALS"])
 
 
 # Authenticate Google Drive
