@@ -116,4 +116,3 @@ watchdog==6.0.0
 Werkzeug==3.0.4
 zipp==3.21.0
 zstandard==0.23.0
-pip
