@@ -1,0 +1,67 @@
+🧩 Purpose
+A Streamlit-based app that performs a CNG service reset on VAG vehicles using OpenOBD, logs results, and stores VIN and guessed brand info.
+
+🧱 Core Components
+1. Imports & Setup
+Uses openobd, streamlit, pandas, datetime, and logging.
+
+Log file: cng_reset_log.txt
+
+Session log CSV: cng_reset_sessions.csv
+
+2. Helper Functions
+log_response() — Appends messages to the log file.
+
+send_request() — Sends diagnostic requests and verifies responses.
+
+decode_utf8() — Converts hex to readable strings.
+
+decode_service_counter() — Extracts CNG day counter from response.
+
+guess_vag_brand() — Guesses brand (Audi, VW, etc.) from VIN prefix.
+
+3. Main Function: perform_cng_reset()
+Starts a diagnostic session with a ticket ID.
+
+Configures CAN bus for ISOTP communication.
+
+Connects to CNG ECU and reads:
+
+ECU Info
+
+Software version
+
+VIN + Brand Guess
+
+CNG Service Counter (before/after reset)
+
+Performs the CNG reset via UDS commands.
+
+Logs results, success/failure status.
+
+Saves session info to CSV (timestamp, ticket, VIN, brand, pre/post days).
+
+4. Streamlit UI
+Input for ticket ID.
+
+Buttons to:
+
+Start reset
+
+View & terminate active sessions
+
+Show/download past session logs
+
+📦 Data Saved
+Each row in the CSV contains:
+
+Timestamp
+
+Ticket ID
+
+VIN
+
+Guessed Brand
+
+Pre-reset and Post-reset CNG service days
+

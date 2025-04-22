@@ -1,0 +1,5 @@
+VIN: EV_DashBoardVDDMQBA0
+Software Version: 001044
+Initial Service Counter: 08F5
+Post-reset Service Counter: 0E91
+
