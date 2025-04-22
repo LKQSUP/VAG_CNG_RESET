@@ -166,7 +166,7 @@ def perform_cng_reset(ticket_id):
         for sock in sockets:
             sock.stop_stream()
 
-st.title("🚘 VAG CNG Service Reset Tool")
+st.title("🚘 VAG CNG Service Reset ")
 ticket_id = st.text_input("Enter Ticket ID")
 
 if st.button("Start Reset"):
