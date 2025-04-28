@@ -1,0 +1,13 @@
+modules = ["python-3.11"]
+
+[[ports]]
+localPort = 8051
+externalPort = 3001
+
+[[ports]]
+localPort = 8052
+externalPort = 80
+
+[[ports]]
+localPort = 8501
+externalPort = 3000

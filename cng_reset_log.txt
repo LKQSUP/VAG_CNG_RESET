@@ -14,3 +14,15 @@ CNG Pre-reset CNG counter: None
 CNG Post-reset CNG counter: None
 CNG Pre-reset CNG counter: None
 CNG Post-reset CNG counter: None
+CNG Pre-reset CNG counter: 2340
+CNG Post-reset CNG counter: 2340
+CNG Pre-reset CNG counter: 2340
+CNG Post-reset CNG counter: 2340
+CNG Pre-reset CNG counter: 2340
+CNG Post-reset CNG counter: 2340
+CNG Pre-reset CNG counter: 2340
+CNG Post-reset CNG counter: 2340
+CNG Pre-reset CNG counter: 2340
+CNG Post-reset CNG counter: 2340
+CNG Pre-reset CNG counter: 3729
+CNG Post-reset CNG counter: 3729

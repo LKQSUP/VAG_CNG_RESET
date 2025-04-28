@@ -13,12 +13,13 @@ from matplotlib.backends.backend_pdf import PdfPages
 from gspread_dataframe import set_with_dataframe, get_as_dataframe
 from oauth2client.service_account import ServiceAccountCredentials
 from openobd import *
-from PIL import Image
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logging.info("Author: yayra.osias@lkqbelgium.be")
 logging.info("VAG Information Retrieval")
+
+
 
 google_credentials_str = os.getenv("GOOGLE_DRIVE_CREDENTIALS")
 
@@ -27,6 +28,20 @@ if not google_credentials_str:
     exit(1)
 
 GOOGLE_CREDENTIALS = json.loads(google_credentials_str)
+
+
+
+
+
+# Load Google Drive credentials
+#credentials_str = st.secrets["GOOGLE_DRIVE_CREDENTIALS"]
+#if not credentials_str:
+    #st.error("❌ Missing Google Drive Credentials!")
+   # st.stop()
+#GOOGLE_CREDENTIALS = json.loads(credentials_str)
+
+
+
 
 # Authenticate Google Drive
 def authenticate_google_drive():
@@ -65,10 +80,6 @@ def save_data_to_google_sheets(data, sheet_name, worksheet_name):
         set_with_dataframe(sheet, combined_data)
         st.success(f"✅ Data saved to {worksheet_name}")
         st.session_state["last_scan_raw"] = data
-        if data:
-            vin = next((item["VIN"] for item in data if "VIN" in item), "N/A")
-            st.session_state["last_vin"] = vin
-            st.session_state["last_modules"] = [entry.get("Module", "") for entry in data]
     except Exception as e:
         st.error(f"❌ ERROR saving data to {worksheet_name}: {e}")
 
@@ -104,21 +115,19 @@ def update_sheet3_if_needed(sheet_name, worksheet_name, comparison_data):
     else:
         st.info("✅ Sheet3 already contains all entries. No update needed.")
 
+#####################################################################
+
 # Define modules
 all_modules = {
-    "01_ECM": {
-        "request_response_ids": [(0x07E0, 0x07E8), (0x17FC0076, 0x17FE0076)]
-    },
-    "51_E_Drivetrain": {"request_id": 0x17FC007C, "response_id": 0x17FE007C, "skip_1003": True},
-    "03_ABS_ESP": {"request_id": 0x0713, "response_id": 0x077D},
+    "01_ECM": {"request_id": 0x07E0, "response_id": 0x07E8},
     "C6_EV_OBC": {"request_id": 0x0744, "response_id": 0x07AE},
     "23_BKV": {"request_id": 0x073B, "response_id": 0x07A5},
-    "16_Steering Wheel": {"request_id": 0x070C, "response_id": 0x0776},
+
     "15_SRS_Airbag": {"request_id": 0x0715, "response_id": 0x077F},
     "23_EBKV": {"request_id": 0x073B, "response_id": 0x07A5},
     "75_SOS-MODULE": {"request_id": 0x0767, "response_id": 0x07D1},
     "44_EPS": {"request_id": 0x0712, "response_id": 0x077C},
-    "AC_SCR": {"request_id": 0x0794, "response_id": 0x072A},
+    #"8C_BECM": {"request_id": 0x07ED, "response_id": 0x07E5},
     "55_AFS_LIGHT": {"request_id": 0x0754, "response_id": 0x07BE},
     "02_TCM": {"request_id": 0x07E1, "response_id": 0x07E9},
     "17_IPC": {"request_id": 0x0714, "response_id": 0x077E},
@@ -129,17 +138,6 @@ all_modules = {
     "A5_FRONTSENSORS": {"request_id": 0x074F, "response_id": 0x07B9},
 }
 
-# Helper for decoding
-
-def decode_utf8(response):
-    if response and not response.startswith("7F"):
-        try:
-            return binascii.unhexlify(response[6:]).decode("utf-8").strip()
-        except Exception:
-            return "N/A"
-    return "No response"
-
-# Start UI
 st.title("🚗 VAG Module Scanner")
 st.write("Scan VAG vehicle modules and log data to the cloud.")
 
@@ -177,6 +175,14 @@ if ticket_id and ticket_id.isdigit():
 
             sheet3_db = load_sheet3_db("VAG_data", "Sheet3")
 
+            def decode_utf8(response):
+                if response and not response.startswith("7F"):
+                    try:
+                        return binascii.unhexlify(response[6:]).decode("utf-8").strip()
+                    except Exception:
+                        return "N/A"
+                return "No response"
+
             def check_sheet3_versions(part_number):
                 row = sheet3_db[sheet3_db["VAG Part Number"] == part_number]
                 if not row.empty:
@@ -189,40 +195,14 @@ if ticket_id and ticket_id.isdigit():
             for module_name, module_info in selected_modules.items():
                 st.write(f"\n===== Scanning {module_name} =====")
                 try:
-                    id_pairs = module_info.get("request_response_ids", [(module_info["request_id"], module_info["response_id"])] if "request_id" in module_info else [])
-                    valid_socket = None
-                    for req_id, res_id in id_pairs:
-                        try:
-                            channel = IsotpChannel(
-                                bus_name="VAG_bus",
-                                request_id=req_id,
-                                response_id=res_id,
-                                padding=Padding.PADDING_ENABLED,
-                            )
-                            test_socket = IsotpSocket(openobd_session, channel)
-
-                            valid = False
-                            if not module_info.get("skip_1003"):
-                                test_response = test_socket.request("1003", tries=2, timeout=5)
-                                if test_response and test_response.startswith("62"):
-                                    valid = True
-                            if not valid:
-                                test_response = test_socket.request("22F190", tries=2, timeout=5)
-                                if test_response and test_response.startswith("62"):
-                                    valid = True
-                            if valid:
-                                valid_socket = test_socket
-                                break
-                            else:
-                                test_socket.stop_stream()
-                        except Exception:
-                            continue
-
-                    if not valid_socket:
-                        st.error(f"❌ No valid response for {module_name}")
-                        continue
-
-                    module_socket = valid_socket
+                    channel = IsotpChannel(
+                        bus_name="VAG_bus",
+                        request_id=module_info["request_id"],
+                        response_id=module_info["response_id"],
+                        padding=Padding.PADDING_ENABLED,
+                    )
+                    module_socket = IsotpSocket(openobd_session, channel)
+                    module_socket.request("1003", tries=2, timeout=5)
 
                     module_entry = {"Module": module_name}
                     part_no = ""
@@ -265,3 +245,77 @@ if ticket_id and ticket_id.isdigit():
 
         except Exception as e:
             st.error(f"❌ Failed to complete scan: {e}")
+
+
+
+#############################################################
+
+
+
+
+# PDF Export Section
+def export_scan_to_pdf():
+    raw = st.session_state.get("last_scan_raw", [])
+    if not raw:
+        st.warning("No scan data available yet.")
+        return
+
+    df = pd.DataFrame(raw)
+    pdf_buffer = io.BytesIO()
+    with PdfPages(pdf_buffer) as pdf:
+        fig, ax = plt.subplots(figsize=(8.5, 11))
+        ax.axis('off')
+        table = ax.table(cellText=df.values, colLabels=df.columns, loc='center')
+        table.scale(1, 2)
+        pdf.savefig(fig)
+        plt.close()
+
+    st.download_button(
+        label="📥 Download PDF",
+        data=pdf_buffer.getvalue(),
+        file_name="vag_scan_results.pdf",
+        mime="application/pdf"
+    )
+
+
+# Dummy scan button
+
+#if st.button("Simulate Scan"):
+   # example_data = [{"Module": "01_ECM", "VAG Part Number": "03L906023", "Software Version": "0010"}]
+   # save_data_to_google_sheets(example_data, "VAG_data", "Sheet1")
+   # st.success("Scan complete!")
+
+
+
+# PDF Export toggle
+if st.checkbox("📄 Export last scan to PDF (if available)"):
+    export_scan_to_pdf()
+
+# Graceful Exit
+with st.expander("🚪 Exit Safely"):
+    openobd = OpenOBD()
+    session_list = openobd.get_session_list()
+
+    if not session_list.sessions:
+        st.success("✅ No active OpenOBD sessions.")
+    else:
+        st.warning("⚠️ Active OpenOBD sessions detected:")
+        session_display = [
+            f"{i + 1}. ID: {s.id} | State: {s.state} | Created: {s.created_at}"
+            for i, s in enumerate(session_list.sessions)
+        ]
+        selected_display = st.multiselect("Select session(s) to close:", options=session_display)
+
+        if selected_display:
+            for display in selected_display:
+                try:
+                    idx = int(display.split(".")[0]) - 1
+                    sid = session_list.sessions[idx].id
+                    openobd.interrupt_session(session_id=SessionId(value=sid))
+                    st.success(f"✅ Session {sid} closed.")
+                except Exception as e:
+                    st.error(f"❌ Failed to close session: {e}")
+
+    if st.button("Logout and Exit"):
+        st.success("👋 Logged out. Application will now exit.")
+        st.stop()

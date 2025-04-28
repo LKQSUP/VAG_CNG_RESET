@@ -51,3 +51,17 @@ from pytz import timezone
 
 local_tz = timezone("Europe/Brussels")  # Or your preferred timezone
 timestamp = datetime.now(local_tz).strftime("%Y-%m-%d %H:%M:%S")
+
+
+
+
+
+git add . → Stages all changes
+
+git commit -m "..." → Commits with a message
+
+git push → Pushes to the current branch (usually main or dev)
+
+
+
+streamlit run cng_reset_app2.py --server.port=8052
