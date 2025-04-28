@@ -78,7 +78,8 @@ platformdirs==4.3.7
 poetry==2.1.2
 poetry-core==2.1.2
 proto-plus==1.25.0
-protobuf==5.28.3
+protobuf>=3.20.2,<5.0
+
 pyarrow==19.0.1
 pyasn1==0.6.1
 pyasn1_modules==0.4.2
