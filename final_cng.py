@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 log_file_path = "cng_reset_log.txt"
 session_csv_path = "cng_reset_sessions.csv"
 SPREADSHEET_ID = "1uazxFUibJQsQ_VVmCzN-Z4lbc6zvzI2UQDCLNVf05XQ"
-SHEET_NAME = "Sheet1"
+SHEET_NAME = "cng_data"
 
 # Expected column order for Google Sheet
 EXPECTED_COLUMNS = [
@@ -91,7 +91,8 @@ def append_to_google_sheet(data_dict, spreadsheet_id, sheet_name):
         ).execute()
 
         st.success("✅ Data appended to Google Sheet.")
-        st.info(f"Append result: {result}")
+        #st.info(f"Append result: {result}") # to debug and show if it succesfull added 
+        st.info(f"Data Successfully added to file: {sheet_name}")
 
         logging.info("✅ Data appended to Google Sheet.")
     except Exception as e:
