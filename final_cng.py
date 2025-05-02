@@ -238,7 +238,7 @@ def perform_cng_reset(ticket_id, reset_years):
         df.to_csv(session_csv_path, index=False)
 
         upload_csv_with_service_account(session_csv_path)
-        #append_to_google_sheet(session_data, SPREADSHEET_ID, SHEET_NAME)
+        append_to_google_sheet(session_data, SPREADSHEET_ID, SHEET_NAME)
 
     except Exception as e:
         logging.error(f"Error: {e}")
