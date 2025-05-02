@@ -9,6 +9,8 @@ import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from datetime import datetime, timedelta
+
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -257,10 +259,36 @@ def perform_cng_reset(ticket_id, reset_years):
             logging.error(f"Error closing socket: {e}")
 
 # --- Streamlit UI ---
-st.warning("⚠️ This page is being updated. Some features may reload or behave differently during updates.", icon="⚠️")
-st.info("📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**", icon="ℹ️")
+# Set the date of this update
+update_date = datetime(2025, 5, 2)  
+expiration_days = 5
+today = datetime.now()
+
+show_update_notice = (today - update_date).days < expiration_days
 
 
+st.warning("⚠️ This page is being geupdated. check under for the new features...", icon="⚠️")
+#st.info("📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**", icon="ℹ️")
+
+if show_update_notice:
+    st.warning("⚠️ This page is being updated. Some features may reload or behave differently during updates.", icon="⚠️")
+    st.info("📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**", icon="ℹ️")
+
+    with st.expander("🆕 What's New in This Update?", expanded=True):
+        st.markdown("""
+        **Key Changes in This Version:**
+
+        - ✅ Automatic logging of reset sessions to **Google Drive** (CSV file).
+        - ✅ Automatic appending of reset data to the official **Google Sheet** (`cng_data`).
+        - ✅ VIN and brand detection shown in UI.
+        - ✅ Dynamic reset period (2 or 4 years) selection.
+        - ✅ Enhanced error handling and logging.
+        - ✅ UI messages for successful uploads and resets.
+
+        Please report any issues to **LKQ Support: Yayra.osias@lkqbelgium.be**
+        """)
+
+#SCRIPT start-------------------------------------------------
 
 st.title("\U0001F698 VAG CNG Service Reset")
 ticket_id = st.text_input("Enter Ticket ID")
