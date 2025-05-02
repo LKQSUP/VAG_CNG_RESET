@@ -293,18 +293,16 @@ today = datetime.now()
 
 show_update_notice = (today - update_date).days < expiration_days
 
-st.warning("⚠️ This page is geupdated. check under for the new features...",
-           icon="⚠️")
+#st.warning("⚠️ This page is geupdated. check under for the new features...",icon="⚠️")
 
 #st.info("📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**", icon="ℹ️")
 
 if show_update_notice:
     st.warning(
-        "⚠️ This page is being updated. Some features may reload or behave differently during updates.",
+        "⚠️ This page is geupdated. check under for the new features...",
         icon="⚠️")
-    st.info(
-        "📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**",
-        icon="ℹ️")
+    #st.info(
+        #"📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**",icon="ℹ️")
 
     with st.expander("🆕 What's New in This Update?", expanded=True):
         st.markdown("""
