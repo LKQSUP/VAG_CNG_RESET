@@ -11,7 +11,6 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from datetime import datetime, timedelta
 
-
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
 log_file_path = "cng_reset_log.txt"
@@ -21,15 +20,24 @@ SHEET_NAME = "cng_data"
 
 # Expected column order for Google Sheet
 EXPECTED_COLUMNS = [
-    "timestamp", "ticket_id", "CNG_pre_days", "CNG_post_days",
-    "Gateway_pre_days", "Gateway_post_days", "vin", "brand_guess",
-    "reset_period_years"#, "Kolom 1"
+    "timestamp",
+    "ticket_id",
+    "CNG_pre_days",
+    "CNG_post_days",
+    "Gateway_pre_days",
+    "Gateway_post_days",
+    "vin",
+    "brand_guess",
+    "reset_period_years"  #, "Kolom 1"
 ]
 
 # Initialize OpenOBD
 openobd = OpenOBD()
 
-def upload_csv_with_service_account(file_path, file_name='cng_reset_sessions.csv', folder_id=None):
+
+def upload_csv_with_service_account(file_path,
+                                    file_name='cng_reset_sessions.csv',
+                                    folder_id=None):
     try:
         creds_str = os.getenv("GOOGLE_DRIVE_CREDENTIALS")
         if not creds_str:
@@ -38,26 +46,35 @@ def upload_csv_with_service_account(file_path, file_name='cng_reset_sessions.csv
 
         credentials = service_account.Credentials.from_service_account_info(
             json.loads(creds_str),
-            scopes=['https://www.googleapis.com/auth/drive']
-        )
+            scopes=['https://www.googleapis.com/auth/drive'])
         service = build('drive', 'v3', credentials=credentials)
 
         media = MediaFileUpload(file_path, mimetype='text/csv')
-        response = service.files().list(q=f"name='{file_name}' and trashed=false", fields="files(id, name)").execute()
+        response = service.files().list(
+            q=f"name='{file_name}' and trashed=false",
+            fields="files(id, name)").execute()
         st.success("✅ Data appended to Google Sheet.")
 
         files = response.get('files', [])
 
         if files:
             file_id = files[0]['id']
-            file = service.files().update(fileId=file_id, media_body=media, fields='id').execute()
-            logging.info(f"✅ Updated: https://drive.google.com/file/d/{file['id']}/view")
+            file = service.files().update(fileId=file_id,
+                                          media_body=media,
+                                          fields='id').execute()
+            logging.info(
+                f"✅ Updated: https://drive.google.com/file/d/{file['id']}/view"
+            )
         else:
             metadata = {'name': file_name}
             if folder_id:
                 metadata['parents'] = [folder_id]
-            file = service.files().create(body=metadata, media_body=media, fields='id').execute()
-            logging.info(f"✅ Uploaded: https://drive.google.com/file/d/{file['id']}/view")
+            file = service.files().create(body=metadata,
+                                          media_body=media,
+                                          fields='id').execute()
+            logging.info(
+                f"✅ Uploaded: https://drive.google.com/file/d/{file['id']}/view"
+            )
     except Exception as e:
         logging.error(f"❌ Drive upload failed: {e}")
 
@@ -73,8 +90,7 @@ def append_to_google_sheet(data_dict, spreadsheet_id, sheet_name):
 
         credentials = service_account.Credentials.from_service_account_info(
             json.loads(creds_str),
-            scopes=["https://www.googleapis.com/auth/spreadsheets"]
-        )
+            scopes=["https://www.googleapis.com/auth/spreadsheets"])
         service = build('sheets', 'v4', credentials=credentials)
         sheet = service.spreadsheets()
 
@@ -84,16 +100,16 @@ def append_to_google_sheet(data_dict, spreadsheet_id, sheet_name):
 
         values = [[data_dict[col] for col in EXPECTED_COLUMNS]]
 
-        result = sheet.values().append(
-            spreadsheetId=spreadsheet_id,
-            range=f"{sheet_name}!A1",
-            valueInputOption="RAW",
-            insertDataOption="INSERT_ROWS",
-            body={"values": values}
-        ).execute()
+        result = sheet.values().append(spreadsheetId=spreadsheet_id,
+                                       range=f"{sheet_name}!A1",
+                                       valueInputOption="RAW",
+                                       insertDataOption="INSERT_ROWS",
+                                       body={
+                                           "values": values
+                                       }).execute()
 
         st.success("✅ Data appended to Google Sheet.")
-        #st.info(f"Append result: {result}") # to debug and show if it succesfull added 
+        #st.info(f"Append result: {result}") # to debug and show if it succesfull added
         st.info(f"Data Successfully added to file: {sheet_name}")
 
         logging.info("✅ Data appended to Google Sheet.")
@@ -102,9 +118,11 @@ def append_to_google_sheet(data_dict, spreadsheet_id, sheet_name):
 
         logging.error(f"❌ Failed to write to Google Sheet: {e}")
 
+
 def log_response(data):
     with open(log_file_path, "a") as log_file:
         log_file.write(data + "\n")
+
 
 def send_request(gas, command, expected_prefix):
     try:
@@ -122,11 +140,13 @@ def send_request(gas, command, expected_prefix):
         logging.error(f"Unexpected error: {e}")
         return None
 
+
 def decode_utf8(hex_string):
     try:
         return bytes.fromhex(hex_string).decode("utf-8").strip("\x00")
     except:
         return ""
+
 
 def decode_service_counter(hex_response):
     try:
@@ -134,19 +154,22 @@ def decode_service_counter(hex_response):
     except:
         return None
 
+
 def guess_vag_brand(vin):
     if not vin or len(vin) < 3:
         return "Unknown"
     wmi = vin[:3].upper()
     return {
-        "WVW": "Volkswagen", "WV1": "Volkswagen Commercial",
-        "WAU": "Audi", "TRU": "Audi (Hungary)",
-        "SKZ": "Skoda", "TMB": "Skoda",
-        "VSS": "SEAT", "3VW": "Volkswagen (Mexico)",
+        "WVW": "Volkswagen",
+        "WV1": "Volkswagen Commercial",
+        "WAU": "Audi",
+        "TRU": "Audi (Hungary)",
+        "SKZ": "Skoda",
+        "TMB": "Skoda",
+        "VSS": "SEAT",
+        "3VW": "Volkswagen (Mexico)",
         "9BW": "Volkswagen (Brazil)"
     }.get(wmi, "Unknown")
-
-
 
 
 def perform_cng_reset(ticket_id, reset_years):
@@ -163,9 +186,7 @@ def perform_cng_reset(ticket_id, reset_years):
                 pin_min=14,
                 can_protocol=CanProtocol.CAN_PROTOCOL_ISOTP,
                 can_bit_rate=CanBitRate.CAN_BIT_RATE_500,
-                transceiver=TransceiverSpeed.TRANSCEIVER_SPEED_HIGH
-            )
-        )
+                transceiver=TransceiverSpeed.TRANSCEIVER_SPEED_HIGH))
         StreamHandler(session.configure_bus).send_and_close([bus])
 
         cng_ecu = {"name": "CNG", "req_id": 0x0714, "res_id": 0x077E}
@@ -177,11 +198,12 @@ def perform_cng_reset(ticket_id, reset_years):
         }
 
         st.markdown(f"### Communicating with {cng_ecu['name']} ECU")
-        gas = IsotpSocket(session, IsotpChannel(
-            bus_name="vag_bus",
-            request_id=cng_ecu["req_id"],
-            response_id=cng_ecu["res_id"],
-            padding=Padding.PADDING_ENABLED))
+        gas = IsotpSocket(
+            session,
+            IsotpChannel(bus_name="vag_bus",
+                         request_id=cng_ecu["req_id"],
+                         response_id=cng_ecu["res_id"],
+                         padding=Padding.PADDING_ENABLED))
         sockets.append(gas)
 
         ecu_info = send_request(gas, "22F19E", "62F19E")
@@ -220,13 +242,17 @@ def perform_cng_reset(ticket_id, reset_years):
         session_data["CNG_post_days"] = post_days
 
         if post_days is not None and pre_days is not None:
-            st.success(f"✅ Reset command successfully sent to {cng_ecu['name']} ECU!")
-            st.info("🔔 Reminder: Drive the car or perform ignition cycle 1 min off & on.")
+            st.success(
+                f"✅ Reset command successfully sent to {cng_ecu['name']} ECU!")
+            st.info(
+                "🔔 Reminder: Drive the car or perform ignition cycle 1 min off & on."
+            )
         else:
-            st.error(f"❌ Reset failed: unable to read counter after reset on {cng_ecu['name']} ECU.")
+            st.error(
+                f"❌ Reset failed: unable to read counter after reset on {cng_ecu['name']} ECU."
+            )
 
         st.write("Session data going to sheet:", session_data)
-
 
         for col in EXPECTED_COLUMNS:
             if col not in session_data:
@@ -258,22 +284,27 @@ def perform_cng_reset(ticket_id, reset_years):
         except Exception as e:
             logging.error(f"Error closing socket: {e}")
 
+
 # --- Streamlit UI ---
 # Set the date of this update
-update_date = datetime(2025, 5, 2)  
+update_date = datetime(2025, 5, 2)
 expiration_days = 5
 today = datetime.now()
 
 show_update_notice = (today - update_date).days < expiration_days
 
-
-st.warning("⚠️ This page is geupdated. check under for the new features...", icon="⚠️")
+st.warning("⚠️ This page is geupdated. check under for the new features...",
+           icon="⚠️")
 
 #st.info("📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**", icon="ℹ️")
 
 if show_update_notice:
-    st.warning("⚠️ This page is being updated. Some features may reload or behave differently during updates.", icon="⚠️")
-    st.info("📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**", icon="ℹ️")
+    st.warning(
+        "⚠️ This page is being updated. Some features may reload or behave differently during updates.",
+        icon="⚠️")
+    st.info(
+        "📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**",
+        icon="ℹ️")
 
     with st.expander("🆕 What's New in This Update?", expanded=True):
         st.markdown("""
@@ -293,7 +324,9 @@ if show_update_notice:
 
 st.title("\U0001F698 VAG CNG Service Reset")
 ticket_id = st.text_input("Enter Ticket ID")
-reset_years = st.selectbox("Select Reset Period", options=[2, 4], format_func=lambda x: f"{x} years")
+reset_years = st.selectbox("Select Reset Period",
+                           options=[2, 4],
+                           format_func=lambda x: f"{x} years")
 
 if st.button("Start Reset"):
     if ticket_id.isdigit():
@@ -308,8 +341,12 @@ if st.button("Check Active Sessions"):
     else:
         st.warning("Active sessions found:")
         for session_info in session_list_object.sessions:
-            st.write(f"State: {session_info.state}, Created at: {session_info.created_at}")
-        terminate = st.selectbox("Select session to terminate:", [f"{s.id}" for s in session_list_object.sessions])
+            st.write(
+                f"State: {session_info.state}, Created at: {session_info.created_at}"
+            )
+        terminate = st.selectbox(
+            "Select session to terminate:",
+            [f"{s.id}" for s in session_list_object.sessions])
         if st.button("Terminate Selected Session"):
             openobd.interrupt_session(session_id=SessionId(value=terminate))
             st.success(f"Session {terminate} has been interrupted.")
@@ -318,11 +355,9 @@ if st.button("Show Saved Sessions"):
     try:
         df = pd.read_csv(session_csv_path)
         st.dataframe(df)
-        st.download_button(
-            label="\U0001F4C5 Download Session Log",
-            data=df.to_csv(index=False).encode('utf-8'),
-            file_name="cng_reset_sessions.csv",
-            mime="text/csv"
-        )
+        st.download_button(label="\U0001F4C5 Download Session Log",
+                           data=df.to_csv(index=False).encode('utf-8'),
+                           file_name="cng_reset_sessions.csv",
+                           mime="text/csv")
     except FileNotFoundError:
         st.info("No saved session data found.")
