@@ -95,6 +95,8 @@ def append_to_google_sheet(data_dict, spreadsheet_id, sheet_name):
 
         logging.info("✅ Data appended to Google Sheet.")
     except Exception as e:
+        st.error(f"❌ Google Sheets API error: {e}")
+
         logging.error(f"❌ Failed to write to Google Sheet: {e}")
 
 def log_response(data):
