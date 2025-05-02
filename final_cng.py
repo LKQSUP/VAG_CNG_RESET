@@ -257,6 +257,11 @@ def perform_cng_reset(ticket_id, reset_years):
             logging.error(f"Error closing socket: {e}")
 
 # --- Streamlit UI ---
+st.warning("⚠️ This page is being updated. Some features may reload or behave differently during updates.", icon="⚠️")
+st.info("📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**", icon="ℹ️")
+
+
+
 st.title("\U0001F698 VAG CNG Service Reset")
 ticket_id = st.text_input("Enter Ticket ID")
 reset_years = st.selectbox("Select Reset Period", options=[2, 4], format_func=lambda x: f"{x} years")
