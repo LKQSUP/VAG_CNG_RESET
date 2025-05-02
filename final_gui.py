@@ -100,15 +100,32 @@ def load_sheet3_db(sheet_name, worksheet_name):
 def update_sheet3_if_needed(sheet_name, worksheet_name, comparison_data):
     sheet3 = get_google_sheet(sheet_name, worksheet_name)
     existing_df = pd.DataFrame(sheet3.get_all_records())
+    existing_df.fillna("", inplace=True)
+
+    # Normalize types to strings
+    existing_df["VAG Part Number"] = existing_df["VAG Part Number"].astype(str)
+    existing_df["Available Versions"] = existing_df["Available Versions"].astype(str)
+
     to_add = []
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     for entry in comparison_data:
-        part_no = entry["VAG Part Number"]
-        available_versions = entry["Available Versions"]
-        match = existing_df[(existing_df["VAG Part Number"] == part_no) & (existing_df["Available Versions"] == available_versions)]
-        if match.empty:
-            entry["Timestamp"] = timestamp
-            to_add.append(entry)
+        part_no = str(entry["VAG Part Number"])
+        versions = entry.get("Available Versions", "")
+        version_list = [v.strip() for v in versions.split(",") if v.strip().isdigit()]
+
+        for version in version_list:
+            match = existing_df[
+                (existing_df["VAG Part Number"] == part_no) &
+                (existing_df["Available Versions"] == version)
+            ]
+            if match.empty:
+                to_add.append({
+                    "VAG Part Number": part_no,
+                    "Available Versions": version,
+                    "Timestamp": timestamp
+                })
+
     if to_add:
         st.info("➕ Updating Sheet3 with new entries...")
         updated_df = pd.concat([existing_df, pd.DataFrame(to_add)], ignore_index=True)
@@ -116,8 +133,6 @@ def update_sheet3_if_needed(sheet_name, worksheet_name, comparison_data):
         st.success("✅ Sheet3 updated.")
     else:
         st.info("✅ Sheet3 already contains all entries. No update needed.")
-
-
 
 
 
@@ -210,10 +225,22 @@ if ticket_id and ticket_id.isdigit():
                 return "No response"
 
             def check_sheet3_versions(part_number):
-                row = sheet3_db[sheet3_db["VAG Part Number"] == part_number]
-                if not row.empty:
-                    return row["Available Versions"].values[0]
-                return "N/A"
+                rows = sheet3_db[sheet3_db["VAG Part Number"] == part_number]
+                if rows.empty:
+                    return []
+
+                # Ensure we're working with a clean Series
+                versions_series = pd.Series(rows["Available Versions"])
+                versions_clean = versions_series.dropna().astype(str).unique().tolist()
+
+                try:
+                    # Sort versions numerically if possible
+                    return sorted(versions_clean, key=lambda x: int(x))
+                except ValueError:
+                    # Fall back to alphanumeric sort
+                    return sorted(versions_clean)
+
+
 
             raw_data = []
             version_data = []
@@ -248,13 +275,61 @@ if ticket_id and ticket_id.isdigit():
 
                     if part_no and sw_ver:
                         available_versions = check_sheet3_versions(part_no)
-                        comparison_entry = {
-                            "VAG Part Number": part_no,
-                            "Current Version": sw_ver,
-                            "Available Versions": available_versions,
-                        }
+
+                        if available_versions:
+                            
+                            # Cast versions to integers only if they are digit strings
+                            numeric_versions = [int(v) for v in available_versions if v.isdigit()]
+                            current_version_int = int(sw_ver) if sw_ver.isdigit() else None
+
+                            if numeric_versions and current_version_int is not None:
+                                highest_version = max(numeric_versions)
+                                is_newer = current_version_int > highest_version
+                                is_older = current_version_int < highest_version
+                                highest_version_display = str(highest_version)
+                            else:
+                                highest_version = "N/A"
+                                is_newer = False
+                                is_older = False
+                                highest_version_display = "N/A"
+
+                            comparison_entry = {
+                                "VAG Part Number": part_no,
+                                "Current Version": sw_ver,
+                                "Available Versions": ", ".join(available_versions),
+                                "Highest Known Version": highest_version_display,
+                                "Note": "⚠️ Vehicle version is newer!" if is_newer else "",
+
+                            }
+
+                            info_msg = (
+                                f"📢 {part_no} | Current: {sw_ver} | "
+                                f"Available: {', '.join(available_versions)} | "
+                                f"Highest: {highest_version_display}"
+                            )
+
+                            if is_newer:
+                                info_msg += " 🔺 Vehicle version is newer than Sheet3!"
+                            elif is_older:
+                                info_msg += f" ✅ ECU can be updated to version {highest_version_display}"
+
+                            st.info(info_msg)
+
+                        else:
+                            comparison_entry = {
+                                "VAG Part Number": part_no,
+                                "Current Version": sw_ver,
+                                "Available Versions": ", ".join(available_versions),
+                                "Highest Known Version": highest_version_display,
+                                "Note": (
+                                    "⚠️ Vehicle version is newer!" if is_newer else
+                                    f"✅ Update available: {highest_version_display}" if is_older else ""
+                                )
+                            }
+
+                            st.warning(f"📢 {part_no} | Current: {sw_ver} | No known versions in Sheet3.")
+
                         version_data.append(comparison_entry)
-                        st.info(f"📢 {part_no} | Current: {sw_ver} | Available: {available_versions}")
 
                     module_socket.stop_stream()
 
@@ -266,13 +341,14 @@ if ticket_id and ticket_id.isdigit():
             if version_data:
                 save_data_to_google_sheets(version_data, "VAG_data", "Sheet2")
                 update_sheet3_if_needed("VAG_data", "Sheet3", version_data)
+                st.session_state["last_versions"] = version_data
+
 
             openobd_session.finish(ServiceResult(result=[Result.RESULT_SUCCESS]))
             st.success("✅ Module info request completed.")
 
         except Exception as e:
             st.error(f"❌ Failed to complete scan: {e}")
-
 
 
 
@@ -284,35 +360,94 @@ def export_scan_to_pdf():
         return
 
     df = pd.DataFrame(raw)
+
+    # Include version comparison if available
+    if "last_versions" in st.session_state:
+        version_df = pd.DataFrame(st.session_state["last_versions"])
+        if not version_df.empty:
+            df = pd.merge(df, version_df, on="VAG Part Number", how="left")
+
     pdf_buffer = io.BytesIO()
     with PdfPages(pdf_buffer) as pdf:
         fig, ax = plt.subplots(figsize=(8.5, 11))
         ax.axis('off')
 
-        logo_path = "logo2.png"  # Place your logo file in the same directory
+        # Optional logo
+        logo_path = "logo2.png"
         if os.path.exists(logo_path):
             img = Image.open(logo_path)
             ax.imshow(img, aspect='auto', extent=[0, 1, 0.9, 1.1], zorder=-1, alpha=0.6)
 
+        # Header
         header = f"Scan Report\nVIN: {st.session_state.get('last_vin', 'N/A')}\nModules: {', '.join(st.session_state.get('last_modules', []))}"
         ax.text(0.5, 1.02, header, ha='center', fontsize=10, transform=ax.transAxes)
 
-        table = ax.table(cellText=df.values, colLabels=df.columns, loc='center')
-        table.scale(1, 2)
+        # Clean columns
+        display_columns = [col for col in df.columns if col not in ["Timestamp"]]
+        display_df = df[display_columns]
+
+        table = ax.table(cellText=display_df.values, colLabels=display_df.columns, loc='center')
+        table.scale(1, 1.5)
         pdf.savefig(fig)
         plt.close()
 
     st.download_button(
         label="📥 Download PDF",
         data=pdf_buffer.getvalue(),
-        file_name="vag_scan_results.pdf",
+        file_name=f"vag_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
         mime="application/pdf"
     )
+
+
 # PDF Export toggle
 if st.checkbox("📄 Export last scan to PDF (if available)"):
+    def export_scan_to_pdf():
+        raw = st.session_state.get("last_scan_raw", [])
+        if not raw:
+            st.warning("No scan data available yet.")
+            return
+
+        df = pd.DataFrame(raw)
+
+        # Merge with version comparison if available
+        if "last_versions" in st.session_state:
+            version_df = pd.DataFrame(st.session_state["last_versions"])
+            if not version_df.empty:
+                df = pd.merge(df, version_df, on="VAG Part Number", how="left")
+
+        pdf_buffer = io.BytesIO()
+        with PdfPages(pdf_buffer) as pdf:
+            fig, ax = plt.subplots(figsize=(8.5, 11))
+            ax.axis('off')
+
+            # Optional logo
+            logo_path = "logo2.png"
+            if os.path.exists(logo_path):
+                img = Image.open(logo_path)
+                ax.imshow(img, aspect='auto', extent=[0, 1, 0.9, 1.1], zorder=-1, alpha=0.6)
+
+            header = f"Scan Report\nVIN: {st.session_state.get('last_vin', 'N/A')}\nModules: {', '.join(st.session_state.get('last_modules', []))}"
+            ax.text(0.5, 1.02, header, ha='center', fontsize=10, transform=ax.transAxes)
+
+            display_columns = [col for col in df.columns if col not in ["Timestamp"]]
+            display_df = df[display_columns]
+
+            table = ax.table(cellText=display_df.values, colLabels=display_df.columns, loc='center')
+            table.scale(1, 1.5)
+            pdf.savefig(fig)
+            plt.close()
+
+        st.download_button(
+            label="📥 Download PDF",
+            data=pdf_buffer.getvalue(),
+            file_name=f"vag_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            mime="application/pdf"
+        )
+
+    # Run export
     export_scan_to_pdf()
 
-# Exit
+# Exit session management
 with st.expander("🚪 Exit Session OpenOBD (if stuck...)"):
     openobd = OpenOBD()
     session_list = openobd.get_session_list()
