@@ -5,6 +5,7 @@ import time
 import requests
 from functools import lru_cache
 import os
+from werkzeug.utils import secure_filename
 
 # --- Replit Secrets ---
 RAPIDAPI_KEY = os.environ["RAPIDAPI_KEY"]
@@ -107,7 +108,8 @@ def run_prescan(ticket_number):
         return "ERROR", dtc_list, logs
 
 def generate_pdf(ticket_number, vin, dtcs, logs):
-    filename = f"pre_scan_report_{ticket_number}.pdf"
+    sanitized_ticket = secure_filename(ticket_number)
+    filename = f"pre_scan_report_{sanitized_ticket}.pdf"
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
