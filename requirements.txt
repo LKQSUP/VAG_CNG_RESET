@@ -91,7 +91,7 @@ platformdirs==4.3.7
 poetry==2.1.2
 poetry-core==2.1.2
 proto-plus==1.25.0
-protobuf==4.25.7
+protobuf==4.25.8
 py-serializable==2.0.0
 pyarrow==19.0.1
 pyasn1==0.6.1
