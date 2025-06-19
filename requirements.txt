@@ -90,7 +90,7 @@ platformdirs==4.3.7
 poetry==2.1.2
 poetry-core==2.1.2
 proto-plus==1.25.0
-protobuf==4.25.7
+protobuf==6.31.1
 py-serializable==2.0.0
 pyarrow==19.0.1
 pyasn1==0.6.1
@@ -129,7 +129,7 @@ trove-classifiers==2025.3.19.19
 typing_extensions==4.13.0
 tzdata==2025.2
 uritemplate==4.1.1
-urllib3==2.3.0
+urllib3==2.5.0
 virtualenv==20.30.0
 watchdog==6.0.0
 Werkzeug==3.1.3
