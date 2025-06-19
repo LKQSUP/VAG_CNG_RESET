@@ -150,7 +150,7 @@ def perform_cng_reset(ticket_id, reset_option):
 ##########################################################
 
 
-tabs = st.tabs(["🔄 Reset", "🛠️ DTC Tool", "📜 History","📟 IPC Reset"])
+tabs = st.tabs(["🔄 Reset", "🛠️ DTC Tool", "📜 History","📟  IPC CNG Reset"])
 
 # === TAB 1: RESET ===
 with tabs[0]:
@@ -278,7 +278,7 @@ with tabs[2]:
 # === TAB 4: RESET IN IPC ====
 
 with tabs[3]:
-    st.subheader("📟 Perform IPC (Cluster) Reset – Module 0017")
+    st.subheader("📟 Perform IPC (Cluster) CNG Reset – Module 0017")
     ticket_id_ipc = st.text_input("Enter Ticket ID", key="ipc_ticket")
 
     if st.button("Send IPC Reset"):
