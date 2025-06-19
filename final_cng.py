@@ -5,141 +5,36 @@ import pandas as pd
 from datetime import datetime
 import pytz
 import os
-import json
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from datetime import datetime, timedelta
 
-# Logging configuration
+# === Setup ===
 logging.basicConfig(level=logging.INFO)
-log_file_path = "cng_reset_log.txt"
+st.set_page_config(page_title="VAG CNG Reset Tool", layout="wide")
+st.title("🚗 VAG CNG Reset & Diagnostic Tool")
+
+# === Constants ===
+RESET_OPTIONS = {
+    "Volkswagen / Audi / Seat / Skoda (Normal)": 4,
+    "SKODA option2": 4,
+    "Read & Clear DTCs": None
+}
+SKODA_CMD = "2E0C380E90"
+SKODA_RESP = "6E0C38"
 session_csv_path = "cng_reset_sessions.csv"
-SPREADSHEET_ID = "1uazxFUibJQsQ_VVmCzN-Z4lbc6zvzI2UQDCLNVf05XQ"
-SHEET_NAME = "cng_data"
-
-# Expected column order for Google Sheet
-EXPECTED_COLUMNS = [
-    "timestamp",
-    "ticket_id",
-    "CNG_pre_days",
-    "CNG_post_days",
-    "Gateway_pre_days",
-    "Gateway_post_days",
-    "vin",
-    "brand_guess",
-    "reset_period_years"  #, "Kolom 1"
-]
-
-# Initialize OpenOBD
 openobd = OpenOBD()
 
-
-def upload_csv_with_service_account(file_path,
-                                    file_name='cng_reset_sessions.csv',
-                                    folder_id=None):
+# === Helpers ===
+def send_request(sock, command, expected_prefix):
     try:
-        creds_str = os.getenv("GOOGLE_DRIVE_CREDENTIALS")
-        if not creds_str:
-            logging.error("Missing Google Drive Credentials!")
-            return
-
-        credentials = service_account.Credentials.from_service_account_info(
-            json.loads(creds_str),
-            scopes=['https://www.googleapis.com/auth/drive'])
-        service = build('drive', 'v3', credentials=credentials)
-
-        media = MediaFileUpload(file_path, mimetype='text/csv')
-        response = service.files().list(
-            q=f"name='{file_name}' and trashed=false",
-            fields="files(id, name)").execute()
-        st.success("✅ Data appended to Google Sheet.")
-
-        files = response.get('files', [])
-
-        if files:
-            file_id = files[0]['id']
-            file = service.files().update(fileId=file_id,
-                                          media_body=media,
-                                          fields='id').execute()
-            logging.info(
-                f"✅ Updated: https://drive.google.com/file/d/{file['id']}/view"
-            )
-        else:
-            metadata = {'name': file_name}
-            if folder_id:
-                metadata['parents'] = [folder_id]
-            file = service.files().create(body=metadata,
-                                          media_body=media,
-                                          fields='id').execute()
-            logging.info(
-                f"✅ Uploaded: https://drive.google.com/file/d/{file['id']}/view"
-            )
-    except Exception as e:
-        logging.error(f"❌ Drive upload failed: {e}")
-
-    st.info(f"✅ CSV uploaded to Google Drive.")
-
-
-def append_to_google_sheet(data_dict, spreadsheet_id, sheet_name):
-    try:
-        creds_str = os.getenv("GOOGLE_DRIVE_CREDENTIALS")
-        if not creds_str:
-            logging.error("Missing Google Drive Credentials!")
-            return
-
-        credentials = service_account.Credentials.from_service_account_info(
-            json.loads(creds_str),
-            scopes=["https://www.googleapis.com/auth/spreadsheets"])
-        service = build('sheets', 'v4', credentials=credentials)
-        sheet = service.spreadsheets()
-
-        for col in EXPECTED_COLUMNS:
-            if col not in data_dict:
-                data_dict[col] = ""
-
-        values = [[data_dict[col] for col in EXPECTED_COLUMNS]]
-
-        result = sheet.values().append(spreadsheetId=spreadsheet_id,
-                                       range=f"{sheet_name}!A1",
-                                       valueInputOption="RAW",
-                                       insertDataOption="INSERT_ROWS",
-                                       body={
-                                           "values": values
-                                       }).execute()
-
-        st.success("✅ Data appended to Google Sheet.")
-        #st.info(f"Append result: {result}") # to debug and show if it succesfull added
-        st.info(f"Data Successfully added to file: {sheet_name}")
-
-        logging.info("✅ Data appended to Google Sheet.")
-    except Exception as e:
-        st.error(f"❌ Google Sheets API error: {e}")
-
-        logging.error(f"❌ Failed to write to Google Sheet: {e}")
-
-
-def log_response(data):
-    with open(log_file_path, "a") as log_file:
-        log_file.write(data + "\n")
-
-
-def send_request(gas, command, expected_prefix):
-    try:
-        response = gas.request(command, silent=True)
+        response = sock.request(command, silent=True)
         logging.info(f"Raw Response: {response}")
         if response.startswith(expected_prefix):
             return response[len(expected_prefix):]
         else:
             logging.warning(f"Unexpected response format for {command}")
             return None
-    except ResponseException as e:
+    except Exception as e:
         logging.error(f"Request failed: {e}")
         return None
-    except Exception as e:
-        logging.error(f"Unexpected error: {e}")
-        return None
-
 
 def decode_utf8(hex_string):
     try:
@@ -147,34 +42,40 @@ def decode_utf8(hex_string):
     except:
         return ""
 
-
 def decode_service_counter(hex_response):
     try:
         return int(hex_response[-4:], 16)
     except:
         return None
 
+def decode_dtc_bytes(dtc_data):
+    dtcs = []
+    dtc_bytes = dtc_data[6:]
+    for i in range(0, len(dtc_bytes), 6):
+        if i + 6 <= len(dtc_bytes):
+            raw = dtc_bytes[i:i+6]
+            b1 = int(raw[0:2], 16)
+            b2 = raw[2:4]
+            b3 = raw[4:6]
+            type_code = (b1 & 0xC0) >> 6
+            type_char = ["P", "C", "B", "U"][type_code]
+            dtc = f"{type_char}{(b1 & 0x3F):02X}{b2}{b3}"
+            dtcs.append(dtc)
+    return dtcs
 
 def guess_vag_brand(vin):
     if not vin or len(vin) < 3:
         return "Unknown"
     wmi = vin[:3].upper()
     return {
-        "WVW": "Volkswagen",
-        "WV1": "Volkswagen Commercial",
-        "WAU": "Audi",
-        "TRU": "Audi (Hungary)",
-        "SKZ": "Skoda",
-        "TMB": "Skoda",
-        "VSS": "SEAT",
-        "3VW": "Volkswagen (Mexico)",
+        "WVW": "Volkswagen", "WV1": "Volkswagen Commercial",
+        "WAU": "Audi", "TRU": "Audi (Hungary)",
+        "SKZ": "Skoda", "TMB": "Skoda",
+        "VSS": "SEAT", "3VW": "Volkswagen (Mexico)",
         "9BW": "Volkswagen (Brazil)"
     }.get(wmi, "Unknown")
 
-
-def perform_cng_reset(ticket_id, reset_years):
-    session = None
-    sockets = []
+def perform_cng_reset(ticket_id, reset_option):
     try:
         session = openobd.start_session_on_ticket(ticket_id)
         SessionTokenHandler(session)
@@ -186,176 +87,305 @@ def perform_cng_reset(ticket_id, reset_years):
                 pin_min=14,
                 can_protocol=CanProtocol.CAN_PROTOCOL_ISOTP,
                 can_bit_rate=CanBitRate.CAN_BIT_RATE_500,
-                transceiver=TransceiverSpeed.TRANSCEIVER_SPEED_HIGH))
+                transceiver=TransceiverSpeed.TRANSCEIVER_SPEED_HIGH
+            )
+        )
         StreamHandler(session.configure_bus).send_and_close([bus])
 
-        cng_ecu = {"name": "CNG", "req_id": 0x0714, "res_id": 0x077E}
-        now = datetime.now(pytz.timezone("Europe/Brussels"))
-        session_data = {
-            "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
+        sock = IsotpSocket(session, IsotpChannel(
+            bus_name="vag_bus",
+            request_id=0x7E0,
+            response_id=0x7E8,
+            padding=Padding.PADDING_ENABLED
+        ))
+
+        vin_hex = send_request(sock, "22F190", "62F190")
+        vin = decode_utf8(vin_hex) if vin_hex else "Unknown"
+
+        cng_pre = send_request(sock, "22F18C", "62F18C")
+        gateway_pre = send_request(sock, "22F187", "62F187")
+
+        send_request(sock, "1003", "50")
+
+        if "SKODA" in reset_option.upper():
+            reset_cmd = SKODA_CMD
+            reset_resp = SKODA_RESP
+        else:
+            reset_cmd = "2E0C380E8C000000"
+            reset_resp = "6E0C38"
+
+        reset_result = send_request(sock, reset_cmd, reset_resp)
+
+        cng_post = send_request(sock, "22F18C", "62F18C")
+        gateway_post = send_request(sock, "22F187", "62F187")
+
+        brand = guess_vag_brand(vin)
+        now = datetime.now(pytz.timezone("Europe/Brussels")).strftime("%Y-%m-%d %H:%M:%S")
+
+        row = {
+            "timestamp": now,
             "ticket_id": ticket_id,
-            "reset_period_years": reset_years
+            "CNG_pre_days": decode_service_counter(cng_pre),
+            "CNG_post_days": decode_service_counter(cng_post),
+            "Gateway_pre_days": decode_service_counter(gateway_pre),
+            "Gateway_post_days": decode_service_counter(gateway_post),
+            "vin": vin,
+            "brand_guess": brand,
+            "reset_period_years": RESET_OPTIONS[reset_option],
+            "Kolom 1": ""
         }
 
-        st.markdown(f"### Communicating with {cng_ecu['name']} ECU")
-        gas = IsotpSocket(
-            session,
-            IsotpChannel(bus_name="vag_bus",
-                         request_id=cng_ecu["req_id"],
-                         response_id=cng_ecu["res_id"],
-                         padding=Padding.PADDING_ENABLED))
-        sockets.append(gas)
+        df = pd.DataFrame([row])
+        df.to_csv(session_csv_path, index=False, mode='a', header=not os.path.exists(session_csv_path))
+        st.success("✅ Reset completed and logged.")
+        st.json(row)
 
-        ecu_info = send_request(gas, "22F19E", "62F19E")
-        sw_version = send_request(gas, "22F1A2", "62F1A2")
-        vin_id = send_request(gas, "22F190", "62F190")
-        decoded_vin = decode_utf8(vin_id or "")
-        session_data["vin"] = decoded_vin
-        session_data["brand_guess"] = guess_vag_brand(decoded_vin)
-
-        st.write("VIN:", decoded_vin)
-        st.write("Brand (guessed):", session_data["brand_guess"])
-        st.write("ECU Info:", decode_utf8(ecu_info or ""))
-        st.write("SW Version:", decode_utf8(sw_version or ""))
-
-        send_request(gas, "1003", "50")
-        send_request(gas, "2EF1988000000E5D23", "6EF198")
-        send_request(gas, "2EF199250409", "6EF199")
-
-        pre_reset = send_request(gas, "220C38", "620C38")
-        pre_days = decode_service_counter(pre_reset)
-        st.write(f"{cng_ecu['name']} pre-reset counter: {pre_days} days")
-
-        if reset_years == 4:
-            send_request(gas, "2E0C3405B4", "6E0C34")
-        else:
-            send_request(gas, "2E0C3402DA", "6E0C34")
-
-        post_reset = send_request(gas, "220C38", "620C38")
-        post_days = decode_service_counter(post_reset)
-        st.write(f"{cng_ecu['name']} post-reset counter: {post_days} days")
-
-        log_response(f"{cng_ecu['name']} Pre-reset CNG counter: {pre_days}")
-        log_response(f"{cng_ecu['name']} Post-reset CNG counter: {post_days}")
-
-        session_data["CNG_pre_days"] = pre_days
-        session_data["CNG_post_days"] = post_days
-
-        if post_days is not None and pre_days is not None:
-            st.success(
-                f"✅ Reset command successfully sent to {cng_ecu['name']} ECU!")
-            st.info(
-                "🔔 Reminder: Drive the car or perform ignition cycle 1 min off & on."
-            )
-        else:
-            st.error(
-                f"❌ Reset failed: unable to read counter after reset on {cng_ecu['name']} ECU."
-            )
-
-        st.write("Session data going to sheet:", session_data)
-
-        for col in EXPECTED_COLUMNS:
-            if col not in session_data:
-                session_data[col] = ""
-
-        df = pd.DataFrame([session_data])
-        try:
-            existing_df = pd.read_csv(session_csv_path)
-            df = pd.concat([existing_df, df], ignore_index=True)
-        except FileNotFoundError:
-            pass
-        df.to_csv(session_csv_path, index=False)
-
-        upload_csv_with_service_account(session_csv_path)
-        append_to_google_sheet(session_data, SPREADSHEET_ID, SHEET_NAME)
-
+        sock.stop_stream()
+        session.finish(ServiceResult(result=[Result.RESULT_SUCCESS]))
     except Exception as e:
-        logging.error(f"Error: {e}")
-        st.error(f"Unexpected error: {e}")
-    finally:
-        try:
-            if session:
-                session.finish(ServiceResult(result=[Result.RESULT_SUCCESS]))
-        except Exception as e:
-            logging.error(f"Error finishing session: {e}")
-        try:
-            for sock in sockets:
-                sock.stop_stream()
-        except Exception as e:
-            logging.error(f"Error closing socket: {e}")
+        logging.error(f"Reset Error: {e}")
+        st.error(f"❌ Reset failed: {e}")
 
 
-# --- Streamlit UI ---
-# Set the date of this update
-update_date = datetime(2025, 5, 2)
-expiration_days = 5
-today = datetime.now()
+##########################################################
 
-show_update_notice = (today - update_date).days < expiration_days
 
-#st.warning("⚠️ This page is geupdated. check under for the new features...",icon="⚠️")
+tabs = st.tabs(["🔄 Reset", "🛠️ DTC Tool", "📜 History","📟 IPC Reset"])
 
-#st.info("📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**", icon="ℹ️")
+# === TAB 1: RESET ===
+with tabs[0]:
+    st.subheader("🔄 Perform CNG Reset")
+    ticket_id = st.text_input("Enter Ticket ID", key="reset_ticket")
+    reset_option = st.selectbox("Select Function", options=[k for k in RESET_OPTIONS if RESET_OPTIONS[k] is not None])
+    if st.button("Start Reset"):
+        if not ticket_id.isdigit():
+            st.error("Ticket ID must be numeric.")
+        else:
+            perform_cng_reset(ticket_id, reset_option)
 
-if show_update_notice:
-    st.warning(
-        "⚠️ This page is geupdated. check under for the new features...",
-        icon="⚠️")
-    #st.info(
-        #"📢 A new update is coming soon! If you experience issues, please contact **LKQ Support: Yayra.osias@lkqbelgium.be**",icon="ℹ️")
+# === TAB 2: DTC TOOL ===
+with tabs[1]:
+    st.subheader("🛠️ Read & Clear DTCs")
+    ticket_id_dtc = st.text_input("Enter Ticket ID", key="dtc_ticket")
 
-    with st.expander("🆕 What's New in This Update?", expanded=True):
-        st.markdown("""
-        **Key Changes in This Version:**
+    if st.button("Start DTC Session"):
+        if not ticket_id_dtc.isdigit():
+            st.error("Ticket ID must be numeric.")
+        else:
+            session = None
+            dtc_socket = None
+            try:
+                session = openobd.start_session_on_ticket(ticket_id_dtc)
+                SessionTokenHandler(session)
 
-        - ✅ Automatic logging of reset sessions to **Google Drive** (CSV file).
-        - ✅ Automatic appending of reset data to the official **Google Sheet** (`cng_data`).
-        - ✅ VIN and brand detection shown in UI.
-        - ✅ Dynamic reset period (2 or 4 years) selection.
-        - ✅ Enhanced error handling and logging.
-        - ✅ UI messages for successful uploads and resets.
+                bus = BusConfiguration(
+                    bus_name="vag_bus",
+                    can_bus=CanBus(
+                        pin_plus=6,
+                        pin_min=14,
+                        can_protocol=CanProtocol.CAN_PROTOCOL_ISOTP,
+                        can_bit_rate=CanBitRate.CAN_BIT_RATE_500,
+                        transceiver=TransceiverSpeed.TRANSCEIVER_SPEED_HIGH
+                    )
+                )
+                StreamHandler(session.configure_bus).send_and_close([bus])
 
-        Please report any issues to **LKQ Support: Yayra.osias@lkqbelgium.be**
-        """)
+                fallback_ids = [(0x07E0, 0x07E8), (0x17FC0076, 0x17FE0076)]
 
-#SCRIPT start-------------------------------------------------
+                for req_id, res_id in fallback_ids:
+                    try:
+                        test_socket = IsotpSocket(session, IsotpChannel(
+                            bus_name="vag_bus",
+                            request_id=req_id,
+                            response_id=res_id,
+                            padding=Padding.PADDING_ENABLED
+                        ))
+                        vin_resp = send_request(test_socket, "22F190", "62F190")
+                        if vin_resp:
+                            dtc_socket = test_socket
+                            vin = decode_utf8(vin_resp)
+                            break
+                        else:
+                            test_socket.stop_stream()
+                    except Exception as e:
+                        logging.warning(f"ECM fallback ID failed: {e}")
 
-st.title("\U0001F698 VAG CNG Service Reset")
-ticket_id = st.text_input("Enter Ticket ID")
-reset_years = st.selectbox("Select Reset Period",
-                           options=[2, 4],
-                           format_func=lambda x: f"{x} years")
+                if not dtc_socket:
+                    st.error("❌ ECM not responding on any known ID pair.")
+                else:
+                    st.success("✅ ECM communication established.")
 
-if st.button("Start Reset"):
-    if ticket_id.isdigit():
-        perform_cng_reset(ticket_id, reset_years)
-    else:
-        st.error("Ticket ID must be numeric.")
+                    partnr = decode_utf8(send_request(dtc_socket, "22F19E", "62F19E") or "")
+                    swver = decode_utf8(send_request(dtc_socket, "22F1A2", "62F1A2") or "")
 
-if st.button("Check Active Sessions"):
-    session_list_object = openobd.get_session_list()
-    if not session_list_object.sessions:
-        st.info("No sessions currently active.")
-    else:
-        st.warning("Active sessions found:")
-        for session_info in session_list_object.sessions:
-            st.write(
-                f"State: {session_info.state}, Created at: {session_info.created_at}"
-            )
-        terminate = st.selectbox(
-            "Select session to terminate:",
-            [f"{s.id}" for s in session_list_object.sessions])
-        if st.button("Terminate Selected Session"):
-            openobd.interrupt_session(session_id=SessionId(value=terminate))
-            st.success(f"Session {terminate} has been interrupted.")
+                    st.markdown(f"**VIN:** `{vin}`  \n**Part Number:** `{partnr}`  \n**Software Version:** `{swver}`")
 
-if st.button("Show Saved Sessions"):
-    try:
+                    send_request(dtc_socket, "1003", "50")
+
+                    raw_dtc = send_request(dtc_socket, "190204", "5902")
+
+                    if not raw_dtc:
+                        st.error("❌ No DTC response received.")
+                    elif raw_dtc.startswith("FF"):
+                        st.success("✅ No DTCs stored.")
+                    elif raw_dtc.startswith("FF00"):
+                        st.success("✅ No active or stored DTCs.")
+                    else:
+                        decoded_dtcs = decode_dtc_bytes("5902" + raw_dtc if not raw_dtc.startswith("5902") else raw_dtc)
+                        if decoded_dtcs:
+                            st.warning("⚠️ DTCs Found:")
+                            for dtc in decoded_dtcs:
+                                st.markdown(f"- **{dtc}**")
+                            if st.button("Clear All DTCs"):
+                                clear_response = send_request(dtc_socket, "14FFFFFF", "54")
+                                if clear_response:
+                                    st.success("✅ DTCs cleared successfully.")
+                                else:
+                                    st.error("❌ DTC clear command failed.")
+                        else:
+                            st.success("✅ No valid DTCs decoded.")
+
+                    dtc_socket.stop_stream()
+
+            except Exception as e:
+                logging.error(f"DTC Read Error: {e}")
+                st.error(f"❌ Unexpected error: {e}")
+            finally:
+                try:
+                    if session:
+                        session.finish(ServiceResult(result=[Result.RESULT_SUCCESS]))
+                except Exception as e:
+                    logging.error(f"Session close failed: {e}")
+
+
+# === TAB 3: HISTORY ===
+with tabs[2]:
+    st.subheader("📜 Previous Reset Logs")
+    if os.path.exists(session_csv_path):
         df = pd.read_csv(session_csv_path)
-        st.dataframe(df)
-        st.download_button(label="\U0001F4C5 Download Session Log",
-                           data=df.to_csv(index=False).encode('utf-8'),
-                           file_name="cng_reset_sessions.csv",
-                           mime="text/csv")
-    except FileNotFoundError:
-        st.info("No saved session data found.")
+        if not df.empty:
+            st.dataframe(df.tail(50).sort_values("timestamp", ascending=False))
+        else:
+            st.info("🕳️ No reset logs available yet.")
+    else:
+        st.warning("⚠️ No CSV log file found.")
+    if st.button("🔄 Refresh Logs"):
+        st.experimental_rerun()
+
+
+
+
+# === TAB 4: RESET IN IPC ====
+
+with tabs[3]:
+    st.subheader("📟 Perform IPC (Cluster) Reset – Module 0017")
+    ticket_id_ipc = st.text_input("Enter Ticket ID", key="ipc_ticket")
+
+    if st.button("Send IPC Reset"):
+        if not ticket_id_ipc.isdigit():
+            st.error("Ticket ID must be numeric.")
+        else:
+            try:
+                session = openobd.start_session_on_ticket(ticket_id_ipc)
+                SessionTokenHandler(session)
+
+                bus = BusConfiguration(
+                    bus_name="ipc_bus",
+                    can_bus=CanBus(
+                        pin_plus=6,
+                        pin_min=14,
+                        can_protocol=CanProtocol.CAN_PROTOCOL_ISOTP,
+                        can_bit_rate=CanBitRate.CAN_BIT_RATE_500,
+                        transceiver=TransceiverSpeed.TRANSCEIVER_SPEED_HIGH
+                    )
+                )
+                StreamHandler(session.configure_bus).send_and_close([bus])
+
+                ipc_sock = IsotpSocket(session, IsotpChannel(
+                    bus_name="ipc_bus",
+                    request_id=0x0714,
+                    response_id=0x077E,
+                    padding=Padding.PADDING_ENABLED
+                ))
+
+                st.markdown("🔍 Reading IPC VIN and Part Number...")
+                vin_hex = send_request(ipc_sock, "22F190", "62F190")
+                vin = decode_utf8(vin_hex) if vin_hex else "Unknown"
+                partnr_hex = send_request(ipc_sock, "22F19E", "62F19E")
+                partnr = decode_utf8(partnr_hex) if partnr_hex else "Unknown"
+
+                col1, col2 = st.columns(2)
+                col1.markdown(f"**VIN:** `{vin}`")
+                col2.markdown(f"**Part Number:** `{partnr}`")
+
+                st.markdown("⚙️ Entering Diagnostic Session...")
+                diag_result = send_request(ipc_sock, "1003", "50")
+                st.success("✅ Extended session OK") if diag_result else st.error("❌ Failed to enter diagnostic session")
+
+                st.markdown("---")
+                st.markdown("🔧 Sending IPC reset sequence...")
+
+                def show_cmd_result(cmd, expected_prefix, label):
+                    resp = send_request(ipc_sock, cmd, expected_prefix)
+                    if resp is not None:
+                        st.success(f"✅ {label} acknowledged")
+                        return True
+                    else:
+                        st.error(f"❌ {label} failed")
+                        return False
+
+                results = {
+                    "F198 Write": show_cmd_result("2EF1988000000CC333", "6EF198", "Write to F198"),
+                    "F199 Write": show_cmd_result("2EF199250617", "6EF199", "Write to F199"),
+                    "0C34 Write": show_cmd_result("2E0C3401", "6E0C34", "Write to 0C34"),
+                    "0C38 Reset": show_cmd_result("2E0C380E91", "6E0C38", "Send final reset")
+                }
+
+                if all(results.values()):
+                    st.success("🎉 IPC reset sequence completed successfully.")
+                else:
+                    st.warning("⚠️ Some IPC reset steps failed. Review communication status above.")
+
+                ipc_sock.stop_stream()
+                session.finish(ServiceResult(result=[Result.RESULT_SUCCESS]))
+
+            except Exception as e:
+                logging.error(f"IPC Reset Error: {e}")
+                st.error(f"❌ IPC Reset failed: {e}")
+
+
+
+
+
+
+
+
+
+    # Exit session management
+with st.expander("🚪 Exit Session OpenOBD (if stuck...)"):
+    openobd = OpenOBD()
+    session_list = openobd.get_session_list()
+
+    if not session_list.sessions:
+        st.success("✅ No active OpenOBD sessions.")
+    else:
+        st.warning("⚠️ Active OpenOBD sessions detected:")
+        session_display = [
+            f"{i + 1}. ID: {s.id} | State: {s.state} | Created: {s.created_at}"
+            for i, s in enumerate(session_list.sessions)
+        ]
+        selected_display = st.multiselect("Select session(s) to close:", options=session_display)
+
+        if selected_display:
+            for display in selected_display:
+                try:
+                    idx = int(display.split(".")[0]) - 1
+                    sid = session_list.sessions[idx].id
+                    openobd.interrupt_session(session_id=SessionId(value=sid))
+                    st.success(f"✅ Session {sid} closed.")
+                except Exception as e:
+                    st.error(f"❌ Failed to close session: {e}")
+
+    if st.button("Logout and Exit"):
+        st.success("👋 Logged out. Application will now exit.")
+        st.stop()
