@@ -275,7 +275,7 @@ with tabs[2]:
 
 
 
-# === TAB 4: RESET IN IPC ===
+# === TAB 4: RESET IN IPC ====
 
 with tabs[3]:
     st.subheader("📟 Perform IPC (Cluster) Reset – Module 0017")
