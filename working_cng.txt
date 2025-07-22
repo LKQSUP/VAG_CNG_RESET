@@ -75,62 +75,6 @@ def guess_vag_brand(vin):
         "9BW": "Volkswagen (Brazil)"
     }.get(wmi, "Unknown")
 
-
-
-def log_ipc_reset(ticket_id, vin, partnr):
-    now = datetime.now(pytz.timezone("Europe/Brussels")).strftime("%Y-%m-%d %H:%M:%S")
-    brand = guess_vag_brand(vin)
-    row = {
-        "timestamp": now,
-        "ticket_id": ticket_id,
-        "vin": vin,
-        "part_number": partnr,
-        "brand_guess": brand,
-        "Kolom 1": ""
-    }
-    df = pd.DataFrame([row])
-    df.to_csv(ipc_csv_path, index=False, mode='a', header=not os.path.exists(ipc_csv_path))
-    append_google_sheet("IPC_Resets", row)
-
-def append_google_sheet(sheet_name, row):
-    try:
-        creds = service_account.Credentials.from_service_account_file("service_account.json")
-        service = build("sheets", "v4", credentials=creds)
-        sheet = service.spreadsheets()
-
-        # Check if sheet exists
-        existing_sheets = sheet.get(spreadsheetId=spreadsheet_id).execute()
-        titles = [s["properties"]["title"] for s in existing_sheets.get("sheets", [])]
-
-        if sheet_name not in titles:
-            requests = [{
-                "addSheet": {
-                    "properties": {"title": sheet_name}
-                }
-            }]
-            service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body={"requests": requests}
-            ).execute()
-
-        values = [[str(v) for v in row.values()]]
-        body = {"values": values}
-        sheet.values().append(
-            spreadsheetId=spreadsheet_id,
-            range=f"{sheet_name}!A1",
-            valueInputOption="USER_ENTERED",
-            body=body
-        ).execute()
-
-    except Exception as e:
-        logging.error(f"Failed to append to Google Sheet: {e}")
-
-
-
-
-
-
-
 def perform_cng_reset(ticket_id, reset_option):
     try:
         session = openobd.start_session_on_ticket(ticket_id)
@@ -378,7 +322,7 @@ with tabs[3]:
                 diag_result = send_request(ipc_sock, "1003", "50")
                 st.success("✅ Extended session OK") if diag_result else st.error("❌ Failed to enter diagnostic session")
 
-                #st.markdown("---")
+                st.markdown("---")
                 st.markdown("🔧 Sending IPC reset sequence...")
 
                 def show_cmd_result(cmd, expected_prefix, label):
