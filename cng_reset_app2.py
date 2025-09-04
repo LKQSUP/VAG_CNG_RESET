@@ -321,18 +321,18 @@ with tabs[3]:
                 st.markdown("⚙️ Entering Diagnostic Session...")
                 diag_result = send_request(ipc_sock, "1003", "50")
                 st.success("✅ Extended session OK") if diag_result else st.error("❌ Failed to enter diagnostic session")
-
+                
                 st.markdown("---")
                 st.markdown("🔧 Sending IPC reset sequence...")
 
-                def show_cmd_result(cmd, expected_prefix, label):
-                    resp = send_request(ipc_sock, cmd, expected_prefix)
-                    if resp is not None:
-                        st.success(f"✅ {label} acknowledged")
-                        return True
-                    else:
-                        st.error(f"❌ {label} failed")
-                        return False
+                #def show_cmd_result(cmd, expected_prefix, label):
+                    #resp = send_request(ipc_sock, cmd, expected_prefix)
+                    #if resp is not None:
+                        #st.success(f"✅ {label} acknowledged")
+                        #return True
+                    #else:
+                        #st.error(f"❌ {label} failed")
+                        #return False
 
                 results = {
                     "F198 Write": show_cmd_result("2EF1988000000CC333", "6EF198", "Write to F198"),
