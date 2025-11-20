@@ -9,7 +9,7 @@ import os
 # === Setup ===
 logging.basicConfig(level=logging.INFO)
 st.set_page_config(page_title="VAG CNG Reset Tool", layout="wide")
-st.title("🚗 VAG CNG Reset & Diagnostic Tool")
+st.title("VAG CNG Reset Tool")
 
 # === Constants ===
 RESET_OPTIONS = {
