@@ -93,7 +93,7 @@ proto-plus==1.25.0
 protobuf==4.25.8  # ✅ fixed here
 py-serializable==2.0.0
 pyarrow==19.0.1
-pyasn1==0.6.1
+pyasn1==0.6.2
 pyasn1_modules==0.4.2
 pycparser==2.22
 pydeck==0.9.1
